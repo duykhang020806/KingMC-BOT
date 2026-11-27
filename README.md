@@ -6,8 +6,8 @@ Bot treo AFK KingMC (KingSMP) kèm điều khiển từ xa qua Discord (`!order`
 - **Build Command:** `npm install`
 - **Start Command:**
   - Render #1 (`duykhang286`, `mahira01`, `mahira02`): `node bot-render.js`
-  - Render #2 (`_Mahiruu_`, `_Mahiruuu_`): `node bot-render-oppo.js` *(hoặc `node bot-render.js` kèm `BOT_PROFILE=oppo`)*
-  - Render #3 (`dogiabao1234`, `mahira01`): `node bot-render-vps.js` *(hoặc `node bot-render.js` kèm `BOT_PROFILE=vps`)*
+  - Render #2 (`mahira01`): `node bot-render-2.js` *(hoặc `node bot-render.js` kèm `BOT_PROFILE=render2`)*
+  - Render Oppo (`_Mahiruu_`, `_Mahiruuu_`): `node bot-render-oppo.js` *(hoặc `node bot-render.js` kèm `BOT_PROFILE=oppo`)*
 - **Environment Variables:**
   - `DISCORD_TOKEN`: Token Discord Bot riêng cho từng Render
   - `DISCORD_CHANNEL_ID`: ID kênh Discord nhận thông báo & điều khiển *(khuyến nghị)*

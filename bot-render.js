@@ -175,7 +175,7 @@ const PROFILES = {
         label: 'Render #1',
         configFile: 'discord_render_config.json',
         channelNames: ['bot-discord-render', 'bot-render'],
-        ignoreChannelKeywords: ['vps', 'oppo'],
+        ignoreChannelKeywords: ['vps', 'oppo', 'render-2'],
         allowSetChannelKeywords: ['bot-discord-render'],
         accounts: [
             { username: 'duykhang286', password: 'khang2006k' },
@@ -194,14 +194,13 @@ const PROFILES = {
             { username: '_Mahiruuu_', password: 'khang2006k' }
         ]
     },
-    vps: {
-        label: 'Render #3 (VPS)',
-        configFile: 'discord_render_vps_config.json',
-        channelNames: ['bot-discord-vps', 'bot-vps', 'bot-discord-render-3'],
-        ignoreChannelKeywords: ['oppo', 'bot-discord-render'],
-        allowSetChannelKeywords: ['vps'],
+    render2: {
+        label: 'Render #2 (mahira01)',
+        configFile: 'discord_render_2_config.json',
+        channelNames: ['bot-discord-render-2', 'bot-render-2'],
+        ignoreChannelKeywords: ['vps', 'oppo', 'bot-discord-render'],
+        allowSetChannelKeywords: ['render-2'],
         accounts: [
-            { username: 'dogiabao1234', password: 'dogiabao0812' },
             { username: 'mahira01', password: 'khang2006k' }
         ]
     }
@@ -1646,7 +1645,7 @@ class BotInstance {
 
             // 3. Hệ thống chống bot không xác nhận được client
             if (lowerReason.includes('không xác nhận được client') || lowerReason.includes('khong xac nhan duoc client')) {
-                this.scheduleReconnect(6000)
+                this.scheduleReconnect(IS_RENDER_ENV ? 12000 : 6000)
                 return
             }
 
@@ -2305,9 +2304,9 @@ async function startSelectedAccounts(selectedIndices) {
 
         botInstance.start()
 
-        // Giãn cách 3 giây giữa các lần kết nối account tiếp theo
+        // Giãn cách kết nối giữa các acc (Render ping xa nên giãn 12s tránh dính chặn 10 phút anti-bot)
         if (i < selectedIndices.length - 1) {
-            await new Promise(r => setTimeout(r, 3000))
+            await new Promise(r => setTimeout(r, IS_RENDER_ENV ? 12000 : 3000))
         }
     }
 }
@@ -3185,7 +3184,8 @@ function initDiscordBot(context) {
             }
 
             const botNames = indices.map(i => `**[${i + 1}] ${ctxAccounts[i].username}**`)
-            message.reply(`▶️ Đang khởi chạy ${indices.length} bot: ${botNames.join(', ')}... (Cách nhau 3s để tránh bị chặn IP)`).catch(() => {})
+            const gapSec = IS_RENDER_ENV ? 12 : 3
+            message.reply(`▶️ Đang khởi chạy ${indices.length} bot: ${botNames.join(', ')}... (Cách nhau ${gapSec}s để tránh bị chặn IP)`).catch(() => {})
 
             if (typeof ctxStartSelected === 'function') {
                 ctxStartSelected(indices).then(() => {
