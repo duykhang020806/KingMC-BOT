@@ -166,23 +166,38 @@ if (process.env.MC_PROXY) {
 
 
 // ========================================
-// DANH SÁCH ACCOUNTS
+// DANH SÁCH ACCOUNTS & PROFILE RENDER
 // ========================================
 
-let accounts = [
-    {
-        username: 'duykhang286',
-        password: 'khang2006k'
+const BOT_PROFILE = (process.env.BOT_PROFILE || 'render1').trim().toLowerCase()
+const PROFILES = {
+    render1: {
+        label: 'Render #1',
+        configFile: 'discord_render_config.json',
+        channelNames: ['bot-discord-render', 'bot-render'],
+        ignoreChannelKeywords: ['vps', 'oppo'],
+        allowSetChannelKeywords: ['bot-discord-render'],
+        accounts: [
+            { username: 'duykhang286', password: 'khang2006k' },
+            { username: 'mahira01', password: 'khang2006k' },
+            { username: 'mahira02', password: 'khang2006k' }
+        ]
     },
-    {
-        username: 'mahira01',
-        password: 'khang2006k'
-    },
-    {
-        username: 'mahira02',
-        password: 'khang2006k'
+    oppo: {
+        label: 'Render #2 (Oppo)',
+        configFile: 'discord_render_oppo_config.json',
+        channelNames: ['bot-discord-oppo', 'bot-oppo', 'bot-discord-render-2'],
+        ignoreChannelKeywords: ['vps', 'bot-discord-render'],
+        allowSetChannelKeywords: ['oppo'],
+        accounts: [
+            { username: '_Mahiruu_', password: 'khang2006k' },
+            { username: '_Mahiruuu_', password: 'khang2006k' }
+        ]
     }
-]
+}
+const activeProfile = PROFILES[BOT_PROFILE] || PROFILES.render1
+
+let accounts = activeProfile.accounts.map(a => ({ ...a }))
 
 if (process.env.MC_ACCOUNTS) {
     try {
@@ -2382,7 +2397,7 @@ async function selectAccount() {
 // TÍCH HỢP DISCORD BOT (EMBEDDED CHO 1 FILE DUY NHẤT)
 // ========================================
 
-const DISCORD_CONFIG_FILE = path.join(__dirname, 'discord_render_config.json')
+const DISCORD_CONFIG_FILE = path.join(__dirname, activeProfile.configFile)
 
 const DEFAULT_DISCORD_CONFIG = {
     token: 'THAY_TOKEN_BOT_DISCORD_RENDER_VAO_DAY',
@@ -2477,7 +2492,7 @@ console.log = function (...args) {
     if (!isStreamingEnabled) return
     try {
         const text = args.map(a => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ')
-        if (text.includes('[DISCORD]') || text.includes('discord_render_config') || text.includes('discord_config')) return
+        if (text.includes('[DISCORD]') || text.includes(activeProfile.configFile) || text.includes('discord_render') || text.includes('discord_config')) return
         forwardLogToDiscord(text)
     } catch (_) {}
 }
@@ -2487,7 +2502,7 @@ console.error = function (...args) {
     if (!isStreamingEnabled) return
     try {
         const text = args.map(a => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ')
-        if (text.includes('[DISCORD]') || text.includes('discord_render_config') || text.includes('discord_config')) return
+        if (text.includes('[DISCORD]') || text.includes(activeProfile.configFile) || text.includes('discord_render') || text.includes('discord_config')) return
         forwardLogToDiscord(`[ERROR] ${text}`)
     } catch (_) {}
 }
@@ -2732,16 +2747,16 @@ function initDiscordBot(context) {
             if (!discordConfig.alertChannelId) {
                 const matchedCh = client.channels.cache.find(
                     ch => ch.isTextBased() && typeof ch.name === 'string' &&
-                        (ch.name.toLowerCase() === 'bot-discord-render' || ch.name.toLowerCase() === 'bot-render')
+                        activeProfile.channelNames.includes(ch.name.toLowerCase())
                 )
                 if (matchedCh) {
                     discordConfig.alertChannelId = matchedCh.id
                     saveDiscordConfig(discordConfig)
-                    originalConsoleLog(`[DISCORD] Tự động liên kết kênh #${matchedCh.name} (${matchedCh.id}) cho bot Render.`)
+                    originalConsoleLog(`[DISCORD] Tự động liên kết kênh #${matchedCh.name} (${matchedCh.id}) cho bot ${activeProfile.label}.`)
                 }
             }
             if (discordConfig.alertChannelId) {
-                sendDiscordAlert('🚀 Bot KingMC Khởi Động', 'Hệ thống Bot KingMC (Render) đã sẵn sàng nhận lệnh điều khiển. Gõ `!help` để xem danh sách lệnh.', 0x2ED573)
+                sendDiscordAlert('🚀 Bot KingMC Khởi Động', `Hệ thống Bot KingMC (${activeProfile.label}) đã sẵn sàng nhận lệnh điều khiển. Gõ \`!help\` để xem danh sách lệnh.`, 0x2ED573)
             }
         })
 
@@ -2777,15 +2792,16 @@ function initDiscordBot(context) {
             const subArgs = args.slice(1)
             const isSetChannelCmd = (command === 'setchannel' || command === 'here')
 
-            // Khóa kênh riêng biệt cho bot Render
+            // Khóa kênh riêng biệt theo profile Render
             const chNameLower = (message.channel.name || '').toLowerCase()
             if (discordConfig.alertChannelId && message.channel.id !== discordConfig.alertChannelId) {
-                if (!(isSetChannelCmd && (hasBotMention || chNameLower.includes('render')))) return
+                const allowByKeyword = activeProfile.allowSetChannelKeywords.some(k => chNameLower.includes(k))
+                if (!(isSetChannelCmd && (hasBotMention || allowByKeyword))) return
             }
 
-            // Tránh nhận nhầm kênh của bot VPS hoặc bot Oppo nếu chưa cài kênh
+            // Tránh nhận nhầm kênh của bot khác nếu chưa cài kênh
             if (!discordConfig.alertChannelId && !hasBotMention) {
-                if (chNameLower.includes('vps') || chNameLower.includes('oppo')) return
+                if (!activeProfile.channelNames.includes(chNameLower) && activeProfile.ignoreChannelKeywords.some(k => chNameLower.includes(k))) return
             }
 
             if (!discordConfig.alertChannelId) {
@@ -3422,6 +3438,7 @@ function startRenderHttpServer() {
             const payload = {
                 status: 'OK',
                 platform: 'render',
+                profile: BOT_PROFILE,
                 uptimeSeconds: Math.floor(process.uptime()),
                 discordReady: Boolean(discordClient && discordClient.isReady()),
                 bots: accounts.map((acc, idx) => {

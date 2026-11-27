@@ -6,6 +6,7 @@ node_modules/
 discord_config.json
 discord_oppo_config.json
 discord_render_config.json
+discord_render_oppo_config.json
 bot-vps.js
 bot-oppo.js
 CheckStatsKingMC-main/
