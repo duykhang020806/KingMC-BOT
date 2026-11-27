@@ -193,6 +193,17 @@ const PROFILES = {
             { username: '_Mahiruu_', password: 'khang2006k' },
             { username: '_Mahiruuu_', password: 'khang2006k' }
         ]
+    },
+    vps: {
+        label: 'Render #3 (VPS)',
+        configFile: 'discord_render_vps_config.json',
+        channelNames: ['bot-discord-vps', 'bot-vps', 'bot-discord-render-3'],
+        ignoreChannelKeywords: ['oppo', 'bot-discord-render'],
+        allowSetChannelKeywords: ['vps'],
+        accounts: [
+            { username: 'dogiabao1234', password: 'dogiabao0812' },
+            { username: 'mahira01', password: 'khang2006k' }
+        ]
     }
 }
 const activeProfile = PROFILES[BOT_PROFILE] || PROFILES.render1
