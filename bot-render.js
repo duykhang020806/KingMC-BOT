@@ -175,7 +175,7 @@ const PROFILES = {
         label: 'Render #1',
         configFile: 'discord_render_config.json',
         channelNames: ['bot-discord-render', 'bot-render'],
-        ignoreChannelKeywords: ['vps', 'oppo', 'render-2'],
+        ignoreChannelKeywords: ['vps', 'oppo', 'render-2', 'render-3'],
         allowSetChannelKeywords: ['bot-discord-render'],
         accounts: [
             { username: 'duykhang286', password: 'khang2006k' },
@@ -184,10 +184,10 @@ const PROFILES = {
         ]
     },
     oppo: {
-        label: 'Render #2 (Oppo)',
+        label: 'Render (Oppo)',
         configFile: 'discord_render_oppo_config.json',
-        channelNames: ['bot-discord-oppo', 'bot-oppo', 'bot-discord-render-2'],
-        ignoreChannelKeywords: ['vps', 'bot-discord-render'],
+        channelNames: ['bot-discord-oppo', 'bot-oppo'],
+        ignoreChannelKeywords: ['vps', 'bot-discord-render', 'render-2', 'render-3'],
         allowSetChannelKeywords: ['oppo'],
         accounts: [
             { username: '_Mahiruu_', password: 'khang2006k' },
@@ -198,10 +198,20 @@ const PROFILES = {
         label: 'Render #2 (mahira01)',
         configFile: 'discord_render_2_config.json',
         channelNames: ['bot-discord-render-2', 'bot-render-2'],
-        ignoreChannelKeywords: ['vps', 'oppo', 'bot-discord-render'],
+        ignoreChannelKeywords: ['vps', 'oppo', 'bot-discord-render', 'render-3'],
         allowSetChannelKeywords: ['render-2'],
         accounts: [
             { username: 'mahira01', password: 'khang2006k' }
+        ]
+    },
+    render3: {
+        label: 'Render #3 (mahira02)',
+        configFile: 'discord_render_3_config.json',
+        channelNames: ['bot-discord-render-3', 'bot-render-3'],
+        ignoreChannelKeywords: ['vps', 'oppo', 'bot-discord-render', 'render-2'],
+        allowSetChannelKeywords: ['render-3'],
+        accounts: [
+            { username: 'mahira02', password: 'khang2006k' }
         ]
     }
 }
@@ -2804,14 +2814,16 @@ function initDiscordBot(context) {
 
             // Khóa kênh riêng biệt theo profile Render
             const chNameLower = (message.channel.name || '').toLowerCase()
+            const isIgnoredChannel = !activeProfile.channelNames.includes(chNameLower) &&
+                activeProfile.ignoreChannelKeywords.some(k => chNameLower.includes(k))
             if (discordConfig.alertChannelId && message.channel.id !== discordConfig.alertChannelId) {
-                const allowByKeyword = activeProfile.allowSetChannelKeywords.some(k => chNameLower.includes(k))
+                const allowByKeyword = !isIgnoredChannel && activeProfile.allowSetChannelKeywords.some(k => chNameLower.includes(k))
                 if (!(isSetChannelCmd && (hasBotMention || allowByKeyword))) return
             }
 
             // Tránh nhận nhầm kênh của bot khác nếu chưa cài kênh
             if (!discordConfig.alertChannelId && !hasBotMention) {
-                if (!activeProfile.channelNames.includes(chNameLower) && activeProfile.ignoreChannelKeywords.some(k => chNameLower.includes(k))) return
+                if (isIgnoredChannel) return
             }
 
             if (!discordConfig.alertChannelId) {
