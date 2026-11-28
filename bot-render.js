@@ -91,6 +91,8 @@ const COLORS = [
 
 const RECONNECT_DELAY = 5000
 const MENU_COOLDOWN = 8000 // Cooldown 8s giữa các lần gửi /menu tránh spam
+const MAINTENANCE_PAUSE_MINUTES = parseInt(process.env.MAINTENANCE_WAIT_MINUTES || '', 10) || 30
+const MAINTENANCE_PAUSE_MS = MAINTENANCE_PAUSE_MINUTES * 60 * 1000 // Mặc định nghỉ 30 phút khi server bảo trì
 
 // Mặc định 1.20.1 - phiên bản ổn định nhất tương thích hoàn toàn với hệ thống chống bot KingMC (Velocity)
 let MC_VERSION = (process.env.MC_VERSION || '1.20.1').trim()
@@ -920,6 +922,20 @@ function isKingSMPMessage(cleanLower) {
     )
 }
 
+function isMaintenanceMessage(text) {
+    if (!text) return false
+    const norm = normalizeSmallCaps(cleanMinecraftText(text))
+    return (
+        norm.includes('may chu bao tri') ||
+        norm.includes('server bao tri') ||
+        norm.includes('bao tri dinh ky') ||
+        (norm.includes('bao tri') && norm.includes('quay lai')) ||
+        (norm.includes('4h30') && (norm.includes('5h') || norm.includes('bao tri'))) ||
+        norm.includes('khoi dong lai may chu') ||
+        norm.includes('may chu khoi dong lai')
+    )
+}
+
 
 // ========================================
 // HỖ TRỢ PRE-PING STATUS CHO HỆ THỐNG CHỐNG BOT (VELOCITY)
@@ -1012,6 +1028,7 @@ class BotInstance {
         this.reconnectTimer = null
         this.physicsDisableTimer = null
         this.pendingQuery = null
+        this.maintenanceUntil = 0
     }
 
     setPhysicsEnabled(enabled) {
@@ -1071,10 +1088,16 @@ class BotInstance {
         this.loggedIn = false
         this.inKingSMP = false
         this.isVerifyReconnect = false
+        this.maintenanceUntil = 0
         this.lastLoginTime = 0
         this.lastMenuSentTime = 0
         this.lastMenuClickTime = 0
 
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer)
+            this.reconnectTimer = null
+        }
+        this.reconnecting = false
         this.clearTimers()
 
         // Gửi Pre-Ping Server Status trước khi kết nối để vượt qua kiểm tra Client của Anti-Bot
@@ -1082,6 +1105,37 @@ class BotInstance {
             if (this.stoppedManually) return
             this._createBotConnection()
         })
+    }
+
+    pauseForMaintenance(reasonText) {
+        if (this.stoppedManually) return
+        if (this.maintenanceUntil > Date.now() && this.reconnecting) return
+
+        const cleanReason = cleanMinecraftText(reasonText || 'Máy chủ bảo trì').replace(/\s+/g, ' ').trim()
+        this.maintenanceUntil = Date.now() + MAINTENANCE_PAUSE_MS
+        this.loggedIn = false
+        this.inKingSMP = false
+        this.rejectPendingQuery('Server đang bảo trì.')
+        this.clearTimers()
+
+        this.log(`[BẢO TRÌ] ${cleanReason} -> Tự ngắt kết nối và nghỉ ${MAINTENANCE_PAUSE_MINUTES} phút rồi mới vào lại!`, YELLOW)
+        sendDiscordAlert(
+            '🛠️ Server Đang Bảo Trì',
+            `**[${this.username}]** phát hiện thông báo bảo trì:\n\`\`\`${cleanReason}\`\`\`\n⏳ Bot đã tự ngắt kết nối và nghỉ **${MAINTENANCE_PAUSE_MINUTES} phút** để không spam đăng nhập.`,
+            0xFFA502
+        )
+
+        this.scheduleReconnect(MAINTENANCE_PAUSE_MS, true)
+
+        if (this.bot) {
+            const oldBot = this.bot
+            this.bot = null
+            try {
+                oldBot.quit()
+            } catch (_) {
+                try { if (oldBot._client) oldBot._client.end() } catch (_) {}
+            }
+        }
     }
 
     _createBotConnection() {
@@ -1172,6 +1226,7 @@ class BotInstance {
 
     stop() {
         this.stoppedManually = true
+        this.maintenanceUntil = 0
         this.rejectPendingQuery('Bot đã dừng hoạt động.')
         this.clearTimers()
 
@@ -1260,13 +1315,16 @@ class BotInstance {
         }, delayMs)
     }
 
-    scheduleReconnect(customDelay = null) {
+    scheduleReconnect(customDelay = null, silentLog = false) {
         if (this.stoppedManually) return
         if (this.reconnecting) return
 
         this.reconnecting = true
 
         let delay = customDelay
+        if (this.maintenanceUntil > Date.now()) {
+            delay = Math.max(delay || 0, this.maintenanceUntil - Date.now())
+        }
         if (!delay) {
             if (this.consecutiveErrors >= 3) {
                 delay = 30000 // Chờ 30s nếu liên tục lỗi
@@ -1277,12 +1335,15 @@ class BotInstance {
             }
         }
 
-        if (!this.isVerifyReconnect) {
-            this.log(`[${getTime()}] Mất kết nối - Thử lại sau ${Math.round(delay / 1000)}s...`, YELLOW)
+        if (!this.isVerifyReconnect && !silentLog) {
+            const sec = Math.round(delay / 1000)
+            const timeLabel = sec >= 120 ? `${Math.round(sec / 60)} phút` : `${sec}s`
+            this.log(`[${getTime()}] Mất kết nối - Thử lại sau ${timeLabel}...`, YELLOW)
         }
 
         this.reconnectTimer = setTimeout(() => {
             this.reconnecting = false
+            this.maintenanceUntil = 0
             if (!this.stoppedManually) {
                 this.start()
             }
@@ -1517,6 +1578,12 @@ class BotInstance {
             const lower = raw.toLowerCase()
             const cleanLower = lower.trim()
 
+            // 0. Phát hiện thông báo bảo trì / khởi động lại máy chủ (loại trừ chat người chơi có <...> hoặc ': ')
+            if (!(raw.includes('<') && raw.includes('>')) && !raw.includes(': ') && isMaintenanceMessage(raw)) {
+                this.pauseForMaintenance(raw)
+                return
+            }
+
             // 1. Server yêu cầu đăng nhập
             if (
                 lower.includes('đăng nhập bằng lệnh') ||
@@ -1635,26 +1702,46 @@ class BotInstance {
         bot.on('kicked', (reason) => {
             this.rejectPendingQuery('Bot bị kick khỏi server.')
             this.clearTimers()
-            const plainReason = typeof reason === 'string' ? reason : getText(reason)
+            const plainReason = cleanMinecraftText(getText(reason)).replace(/\s*\n\s*/g, ' | ')
             const lowerReason = plainReason.toLowerCase()
+            const normReason = normalizeSmallCaps(plainReason)
+
+            // 0. Server đang bảo trì / khởi động lại hàng ngày -> Tự động out và nghỉ 30 phút
+            if (isMaintenanceMessage(plainReason)) {
+                this.pauseForMaintenance(plainReason)
+                return
+            }
 
             // 1. Server yêu cầu xác minh client ban đầu (Anti-Bot Verification) -> âm thầm reconnect vào lại
-            if (lowerReason.includes('xác minh thành công') || lowerReason.includes('xac minh thanh cong')) {
+            if (normReason.includes('xac minh thanh cong')) {
                 this.isVerifyReconnect = true
                 this.scheduleReconnect(3000)
                 return
             }
 
-            // 2. Bị tạm thời chặn 10 phút do hệ thống chống bot
-            if (lowerReason.includes('tạm thời bị chặn') || lowerReason.includes('tam thoi bi chan') || lowerReason.includes('10 phút') || lowerReason.includes('10 phut')) {
+            // 2. Server báo chống spam / vui lòng chờ X giây (vd: 21s, 600s) -> chờ đúng số giây + 3s
+            const waitSecMatch = normReason.match(/vui long cho\s+(\d+)\s*giay/)
+            if (normReason.includes('khong spam') || waitSecMatch) {
+                const waitSec = waitSecMatch ? parseInt(waitSecMatch[1], 10) : 15
+                const delayMs = Math.max(10000, (waitSec + 3) * 1000)
+                this.log(`[CHỐNG SPAM] Server yêu cầu chờ ${waitSec}s -> Đợi ${Math.round(delayMs / 1000)}s rồi vào lại...`, YELLOW)
+                if (waitSec >= 60) {
+                    sendDiscordAlert('⏳ Chờ Vào Lại Server', `**[${this.username}]** bị yêu cầu chờ **${waitSec} giây**.\nBot sẽ tự đợi ${Math.round(delayMs / 1000)}s rồi kết nối lại.`, 0xFFA502)
+                }
+                this.scheduleReconnect(delayMs, true)
+                return
+            }
+
+            // 3. Bị tạm thời chặn 10 phút do hệ thống chống bot
+            if (normReason.includes('tam thoi bi chan') || normReason.includes('10 phut')) {
                 this.log(`[CẢNH BÁO] IP tạm thời bị hệ thống chống bot chặn 10 phút! Đang chờ tự động vào lại...`, RED)
                 sendDiscordAlert('⛔ IP Bị Chặn 10 Phút', `Hệ thống chống bot KingMC tạm thời chặn IP 10 phút.\nBot sẽ tự động tạm dừng 10 phút để hết hạn phạt.`, 0xFF4757)
                 this.scheduleReconnect(610000)
                 return
             }
 
-            // 3. Hệ thống chống bot không xác nhận được client
-            if (lowerReason.includes('không xác nhận được client') || lowerReason.includes('khong xac nhan duoc client')) {
+            // 4. Hệ thống chống bot không xác nhận được client
+            if (normReason.includes('khong xac nhan duoc client')) {
                 this.scheduleReconnect(IS_RENDER_ENV ? 12000 : 6000)
                 return
             }
@@ -1800,6 +1887,9 @@ function showStatus() {
 
             if (instance.stoppedManually) {
                 statusText = `${RED}Đã dừng (Manual Stop)${RESET}`
+            } else if (instance.maintenanceUntil > Date.now() && !instance.bot) {
+                const minsLeft = Math.max(1, Math.ceil((instance.maintenanceUntil - Date.now()) / 60000))
+                statusText = `${YELLOW}Nghỉ bảo trì (vào lại sau ~${minsLeft}p)${RESET}`
             } else if (instance.inKingSMP) {
                 statusText = `${GREEN}Online (KingSMP)${RESET}`
             } else if (instance.loggedIn) {
@@ -3030,6 +3120,10 @@ function initDiscordBot(context) {
                     if (instance.stoppedManually) {
                         statusIcon = '⏹️'
                         statusText = 'Đã dừng (Manual Stop)'
+                    } else if (instance.maintenanceUntil > Date.now() && !instance.bot) {
+                        const minsLeft = Math.max(1, Math.ceil((instance.maintenanceUntil - Date.now()) / 60000))
+                        statusIcon = '🛠️'
+                        statusText = `Nghỉ bảo trì (vào lại sau ~${minsLeft} phút)`
                     } else if (instance.inKingSMP) {
                         statusIcon = '🟢'
                         statusText = '**Online (KingSMP)**'
